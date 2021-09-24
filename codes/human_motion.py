@@ -17,8 +17,7 @@ if __name__ == "__main__":
     data_bow=load_data(data_path_bow)
     data_shoot=load_data(data_path_shoot)
     data_throw=load_data(data_path_throw)
-
-#####################################################################################################################################      
+#%%
     shoot_cp=[168,327,486,637,774,902,1045,1211,1394,1572]
     throw_cp=[90,206,313,419,530,636,738,855,965,1069]
         
@@ -52,17 +51,17 @@ if __name__ == "__main__":
 
         data_r_delete=np.delete(data_r, [6,10], axis=1)
         data_combine_large[ii,:,:]=data_r_delete
-        sio.savemat('data_combine_large.mat', {'data_combine_large': data_combine_large})
+        #sio.savemat('data_combine_large.mat', {'data_combine_large': data_combine_large})
 
     ###PELT
     cp_list=[0,120,210]
     n_signals=18
-    data_past=data_combine_large[1:2,:,:]
-    #lambda1,lambda2=determine_parameters(data_past,n_signals,cp_list,K)
+    data_past=data_combine_large[0:1,:,:]
+    K=0
+    lambda1,lambda2=determine_parameters(data_past,n_signals,cp_list,K,delta=10)
     
-    lambda1=0.0004
-    lambda2=0.27
-    K=0.02
+    #lambda1=0.0068
+    #lambda2=0.35
     cp_list_result=[]
     for ii in range(10):
         data_r_delete=data_combine_large[ii,:,:]
@@ -74,9 +73,23 @@ if __name__ == "__main__":
     mean_cp=cp_matrix_1.mean(axis=0)
     std_cp=cp_matrix_1.std(axis=0)
     
-    lambda1=0.0004
-    lambda2=0.27
-    K=0.01
+    '''
+    for i in range(10):
+        cp_list_temp=cp_return(cp_matrix_1[i,:])
+        print(cp_list_temp)
+    '''
+    '''
+    fig = plt.figure(figsize=(4.5,3))
+    ax = fig.add_axes([0.1, 0.15, 0.85, 0.8]) 
+    plt.errorbar(np.arange (1,211,1),mean_cp,yerr=std_cp,label='estimated location',fmt='o',ecolor='r',color='b',ms=2,elinewidth=1,capsize=1)
+    plt.axvline(120,color='k',ls='-.',lw=1)
+    plt.axhline(0,label='true location',color='k',ls='-.',lw=1)
+    plt.axhline(120,color='k',ls='-.',lw=1)
+    plt.xlabel("Time",fontsize=8)
+    plt.ylabel('The latest change point',fontsize=8)
+    plt.legend(loc='upper left',fontsize=6)
+    '''
+    
     list_t_0_list=[]
     cp_list_result=[]
     for ii in range(10):
@@ -140,7 +153,7 @@ if __name__ == "__main__":
     time_delay_std=np.std(time_delay_list)
     print("Time delay: mean=%.1f, std=%.1f" %(time_delay_mean,time_delay_std))
         
-    data=data_r_delete
+    data=data_combine_large[0,:,:]
     cp_list=[0,120,210]
     for i in range(18):
         coef_matrix=np.zeros((21,len(cp_list)-1))
@@ -150,7 +163,7 @@ if __name__ == "__main__":
             data_y=data_temp[:,i].copy()
             data_x=data_temp.copy()
             data_x[:,i]=0
-            lasso = Lasso(0.0001,fit_intercept=True)
+            lasso = Lasso(lambda1,fit_intercept=True)
             lasso.fit(data_x, data_y)
             coef=lasso.coef_
             intercept=lasso.intercept_
@@ -162,15 +175,53 @@ if __name__ == "__main__":
             coef_matrix[18,j]=intercept
             coef_matrix[19,j]=cost
             coef_matrix[20,j]=r_square
+        
+        fig=plt.figure(figsize=(20,1))
+        ax = fig.add_axes([0, 0, 1, 1]) 
+        plt.axis('off')
+        plt.xlim((0,210))
+        #plt.ylim((data_y_estimate.mean()-0.2,data_y_estimate.mean()+0.2))
+        plt.plot(data[:,i],label='original',color='k',lw=1)
+        plt.plot(data_y_estimate,label='fitted',color='r',linestyle=(2,(5.5,4.0)),lw=2)
+        plt.axvline(120,color='black',linestyle='-.')
+        plt.xticks(fontsize=20)
+        plt.yticks(fontsize=20)
+        plt.ylim(data_y_estimate.mean()-0.55,data_y_estimate.mean()+0.5)
+        plt.savefig('./plot/human_fitted/human_fitted_'+str(i+1)+'.png',dpi=300)
+        
         len_x=11
         coef_matrix_large=np.zeros((len_x,18))
         coef_matrix_large[0:int(len_x/21*12),:]=np.transpose(coef_matrix[0:18,0])
         coef_matrix_large[int(len_x/21*12):len_x,:]=np.transpose(coef_matrix[0:18,1])
+        plt.figure(figsize=(14/7,40/7))
+        plt.imshow(np.transpose(coef_matrix_large),vmax=1,vmin=-1)
+        plt.xticks([])
+        plt.yticks([])
+        #plt.colorbar()
+        plt.xlabel('Time')
+        #plt.savefig('./fig/gesture/coef_matrix_large'+str(i+1)+'.png',dpi=300,bbox_inches='tight')
+    
+    fig=plt.figure(figsize=(23,2))
+    ax = fig.add_axes([0.05, 0.2, 0.93, 0.75]) 
+    ax = plt.gca()
+    ax.spines['top'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    #plt.plot(true_cp_dis,label='true',color='k')
+    plt.plot(range(1,211),cp_matrix_1[0],label='estimated',color='b',linestyle='-')
+    #plt.scatter(np.array(range(210))+1,cp,label='estimated',color='b',s=10)
+    plt.axvline(120,color='black',linestyle='-.')
+    plt.axhline(120,color='black',linestyle='-.')
+    #plt.ylabel('distance',fontsize=20)
+    plt.xlim((0,211))
+    plt.xticks([0,60,120,130,180,210],fontsize=20)
+    plt.yticks([0,60,120],fontsize=20)
+    plt.savefig('./plot/human_fitted/lcp.png',dpi=300)
 
-
-        
-    data=data_r_delete
-    cp_list=[0,120,210]
+    data=data_combine_large[0,:,:]
+    cp=PELT_select_y(data,lambda1,lambda2,K,select_y_list)
+    cp_list=cp_return(cp)
+    cp_list.extend([210])
     for j in range(len(cp_list)-1):
         coef_matrix=np.zeros((18,18))
         for i in range(18):
@@ -188,7 +239,7 @@ if __name__ == "__main__":
             data_y_estimate[cp_list[j]:cp_list[j+1]]=data_y_estimate_temp
             cost=np.sum((data_y_estimate_temp-data_y)**2)+lambda1*np.linalg.norm(coef,ord=1)
             coef_matrix[0:18,i]=coef
-        np.where(coef_matrix>0.3)
-        np.where(coef_matrix<-0.3)
-            
+        print(np.where((coef_matrix>0.3)|(coef_matrix<-0.3)))
+        plt.figure()
         plt.imshow(np.transpose(coef_matrix),vmax=1,vmin=-1)
+        plt.colorbar()

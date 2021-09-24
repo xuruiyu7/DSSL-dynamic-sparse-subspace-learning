@@ -3,6 +3,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from sklearn.linear_model import Lasso,LinearRegression
 import time
+from scipy.stats import ortho_group
 #import imageio
 import os
 
@@ -28,18 +29,19 @@ def draw_cp(data,cp_list):
 
 def Cost_select_y(data,t_left,t_right,lambda1,select_y_list):
     cost=0
+    #dimen=np.size(data,1)
+    len_data=t_right-t_left+1
     for i in select_y_list:
-        data_temp=data[t_left:t_right,:].copy()
+        data_temp=data[t_left-1:t_right,:].copy()
         data_y=data_temp[:,i].copy()
         data_x=data_temp.copy()
         data_x[:,i]=0
-        #N_temp=len(data_x)
-        #lasso = Lasso(lambda1/N_temp/2,fit_intercept=False,max_iter=10000)
-        lasso = Lasso(lambda1,fit_intercept=False,max_iter=10000)
+        lasso = Lasso(lambda1,fit_intercept=False,max_iter=1000)
         lasso.fit(data_x, data_y)
         coef=lasso.coef_
         data_y_estimate=np.dot(data_x,coef)
-        cost=cost+np.sum((data_y_estimate-data_y)**2)+lambda1*np.linalg.norm(coef,ord=1)
+        cost+=np.sum((data_y_estimate-data_y)**2)/2+lambda1*len_data*np.linalg.norm(coef,ord=1)
+        #cost+=max(dimen-len_data,0)*lambda1
     return cost
 
 def miniF_select_y(data,F,lambda1,lambda2,tau,R,cp,K,select_y_list,delta=5):
@@ -48,8 +50,7 @@ def miniF_select_y(data,F,lambda1,lambda2,tau,R,cp,K,select_y_list,delta=5):
     F_vector=np.zeros(length_R)
     for i in range(length_R):
         tau_temp=R[i]
-        cost_vector[i]=Cost_select_y(data,tau_temp,tau+1,lambda1,select_y_list)
-        #print(Cost_select_y(data,tau_temp,tau,lambda1,select_y_list))
+        cost_vector[i]=Cost_select_y(data,tau_temp+1,tau,lambda1,select_y_list)
         F_vector[i]=F[tau_temp]+cost_vector[i]+lambda2
     F_tau=np.min(F_vector)
     F_vector_list=F_vector.tolist()
@@ -57,24 +58,31 @@ def miniF_select_y(data,F,lambda1,lambda2,tau,R,cp,K,select_y_list,delta=5):
     cp_tau=R[cp_tau_index]
 
     while tau-cp_tau<delta:
-        F_vector[cp_tau_index]=1e4
+        if cp_tau==0:
+            break
+        F_vector[cp_tau_index]=1e6
         F_tau=np.min(F_vector)
-        if F_tau>=1e4:
+        if F_tau>=1e6:
             cp_tau=0
-            F_tau=F[cp_tau]+Cost_select_y(data,cp_tau,tau+1,lambda1,select_y_list)+lambda2
+            F_tau=F[cp_tau]+Cost_select_y(data,cp_tau+1,tau,lambda1,select_y_list)+lambda2
             break
         F_vector_list=F_vector.tolist()
         cp_tau_index=F_vector_list.index(min(F_vector_list))
         cp_tau=R[cp_tau_index]       
-#    if tau-cp_tau<50:
-#        cp_tau=int(cp[tau-1])
-#        F_tau=F[cp_tau]+Cost_select_y(data,cp_tau,tau+1,lambda1,select_y_list)+lambda2
-    R_new=[tau+1]
-    for i in range(length_R):
-        tau_temp=R[i]
-        F_tau_temp=F[tau_temp]+cost_vector[i]+K
-        if F_tau_temp<F_tau:
-            R_new.extend([tau_temp])
+    R_new=[]
+    if tau<delta:
+        R_new.extend([0])
+    else:       
+        for i in range(1,4):
+            if tau-i*delta>=0:
+                R_new.extend([tau-i*delta])
+        for i in range(length_R):
+            tau_temp=R[i]
+            if tau_temp in R_new:
+                continue
+            F_tau_temp=F[tau_temp]+cost_vector[i]+K
+            if F_tau_temp<F_tau:
+                R_new.extend([tau_temp])
     return F_tau,cp_tau,R_new
 
 def PELT_select_y(data,lambda1,lambda2,K,select_y_list,delta=5):
@@ -85,12 +93,13 @@ def PELT_select_y(data,lambda1,lambda2,K,select_y_list,delta=5):
     F[0]=-lambda2
     R=[0]
     #iterate
-    for tau in range(length):
-        F[tau+1],cp[tau],R=miniF_select_y(data,F,lambda1,lambda2,tau,R,cp,K,select_y_list,delta)
-        print(tau,cp[tau],len(R),F[tau+1])
+    for tau in range(1,length+1):
+        F[tau],cp[tau-1],R=miniF_select_y(data,F,lambda1,lambda2,tau,R,cp,K,select_y_list,delta)
+        print(tau,cp[tau-1],len(R),F[tau])
+        print(R)
     return cp
 
-def PELT_select_y_with_F(data,lambda1,lambda2,K,select_y_list):
+def PELT_select_y_with_F(data,lambda1,lambda2,K,select_y_list,delta=5):
     length=np.shape(data)[0]
     #initialize
     F=np.zeros(length+1)
@@ -98,12 +107,12 @@ def PELT_select_y_with_F(data,lambda1,lambda2,K,select_y_list):
     F[0]=-lambda2
     R=[0]
     #iterate
-    for tau in range(length):
-        F[tau+1],cp[tau],R=miniF_select_y(data,F,lambda1,lambda2,tau,R,cp,K,select_y_list)
-        print(tau,cp[tau],len(R),F[tau+1])
+    for tau in range(1,length+1):
+        F[tau],cp[tau-1],R=miniF_select_y(data,F,lambda1,lambda2,tau,R,cp,K,select_y_list,delta)
+        print(tau,cp[tau-1],len(R),F[tau])
     return cp,F
 
-def PELT_select_y_time(data,lambda1,lambda2,K,select_y_list):
+def PELT_select_y_time(data,lambda1,lambda2,K,select_y_list,delta=5):
     length=np.shape(data)[0]
     #initialize
     F=np.zeros(length+1)
@@ -114,46 +123,12 @@ def PELT_select_y_time(data,lambda1,lambda2,K,select_y_list):
     t_list=[]
     R_list=[]
     begin_t=time.time()
-    for tau in range(length):
+    for tau in range(1,length+1):
         R_list.append(R)
-        F[tau+1],cp[tau],R=miniF_select_y(data,F,lambda1,lambda2,tau,R,cp,K,select_y_list)
-        print(tau,cp[tau],len(R),F[tau+1])
+        F[tau],cp[tau-1],R=miniF_select_y(data,F,lambda1,lambda2,tau,R,cp,K,select_y_list,delta)
+        print(tau,cp[tau-1],len(R),F[tau])
         t_list.extend([time.time()-begin_t])
     return cp,t_list,R_list
-
-def PELT_select_y_fit(data,lambda1,lambda2,K,select_y_list):
-    length=np.shape(data)[0]
-    n_signals=np.shape(data)[1]
-    #initialize
-    data_fit=np.zeros((length,length,n_signals))
-    F=np.zeros(length+1)
-    cp=np.zeros(length)
-    F[0]=-lambda2
-    R=[0]
-    #iterate
-    t_list=[]
-    R_list=[]
-    begin_t=time.time()
-    for tau in range(length):
-        R_list.append(R)
-        F[tau+1],cp[tau],R=miniF_select_y(data,F,lambda1,lambda2,tau,R,cp,K,select_y_list)
-        print(tau,cp[tau],len(R),F[tau+1])
-        t_list.extend([time.time()-begin_t])
-        
-        cp_list=cp_return(cp[:tau+1])
-        cp_list.extend([tau+1])
-        for i in range(n_signals):
-            for j in range(len(cp_list)-1):
-                data_temp=data[cp_list[j]:cp_list[j+1],:]
-                data_y=data_temp[:,i].copy()
-                data_x=data_temp.copy()
-                data_x[:,i]=0
-                lasso = Lasso(lambda1,fit_intercept=False)
-                lasso.fit(data_x, data_y)
-                coef=lasso.coef_
-                data_y_estimate_temp=np.dot(data_x,coef)
-                data_fit[tau,cp_list[j]:cp_list[j+1],i]=data_y_estimate_temp
-    return cp,t_list,R_list,data_fit
 
 def OP_miniF_select_y(data,F,lambda1,lambda2,tau,R,K,select_y_list):
     length_R=np.size(R)
@@ -205,6 +180,59 @@ def B(x, k, i, t):
       c2 = (t[i+k+1] - x)/(t[i+k+1] - t[i+1]) * B(x, k-1, i+1, t)
    return c1 + c2
 
+def basic_functions_plot(length):
+    fig = plt.figure(figsize=(6,4))
+    ax = fig.add_axes([0.1, 0.1, 0.8, 0.8]) 
+    ax.scatter(range(32),basic_function_Bspline(32)[:,0],color='', marker='o', edgecolors='r')
+    ax.plot(np.array(range(320))/10,basic_function_Bspline(320)[:,0],color='black')
+    plt.xticks(fontsize=20)
+    plt.yticks([0,.5,1,1.5,2,2.5],fontsize=15)
+    plt.ylim([-0.2,2.5])
+    plt.savefig('./plot/basic_functions/basic_signal_1.png',dpi=300)
+    
+    fig = plt.figure(figsize=(6,4))
+    ax = fig.add_axes([0.1, 0.1, 0.8, 0.8]) 
+    ax.scatter(range(32),basic_function_Bspline(32)[:,1],color='', marker='o', edgecolors='r')
+    ax.plot(np.array(range(320))/10,basic_function_Bspline(320)[:,1],color='black')
+    plt.xticks(fontsize=20)
+    plt.yticks([0,.5,1,1.5,2,2.5],fontsize=15)
+    plt.ylim([-0.2,2.5])
+    plt.savefig('./plot/basic_functions/basic_signal_2.png',dpi=300)
+    
+    fig = plt.figure(figsize=(6,4))
+    ax = fig.add_axes([0.1, 0.1, 0.8, 0.8]) 
+    ax.scatter(range(32),basic_function_Bspline(32)[:,2],color='', marker='o', edgecolors='r')
+    ax.plot(np.array(range(320))/10,basic_function_Bspline(320)[:,2],color='black')
+    plt.xticks(fontsize=20)
+    plt.yticks([0,.5,1,1.5,2,2.5],fontsize=15)
+    plt.ylim([-0.2,2.5])
+    plt.savefig('./plot/basic_functions/basic_signal_3.png',dpi=300)
+    
+    fig = plt.figure(figsize=(6,4))
+    ax = fig.add_axes([0.1, 0.1, 0.8, 0.8]) 
+    ax.scatter(range(32),basic_function_Fourier(32)[:,0],color='', marker='o', edgecolors='r')
+    ax.plot(np.array(range(320))/10,basic_function_Fourier(320)[:,0],color='black')
+    plt.xticks(fontsize=20)
+    plt.yticks([-1,-.5,0,.5,1],fontsize=15)
+    plt.savefig('./plot/basic_functions/basic_signal_4.png',dpi=300)
+    
+    fig = plt.figure(figsize=(6,4))
+    ax = fig.add_axes([0.1, 0.1, 0.8, 0.8]) 
+    ax.scatter(range(32),-basic_function_Fourier(32)[:,1],color='', marker='o', edgecolors='r')
+    ax.plot(np.array(range(320))/10,-basic_function_Fourier(320)[:,1],color='black')
+    plt.xticks(fontsize=20)
+    plt.yticks([-1,-.5,0,.5,1],fontsize=15)
+    plt.savefig('./plot/basic_functions/basic_signal_5.png',dpi=300)
+    
+    fig = plt.figure(figsize=(6,4))
+    ax = fig.add_axes([0.1, 0.1, 0.8, 0.8]) 
+    ax.scatter(range(32),basic_function_Fourier(32)[:,2],color='', marker='o', edgecolors='r')
+    ax.plot(np.array(range(320))/10,basic_function_Fourier(320)[:,2],color='black')
+    plt.xticks(fontsize=20)
+    plt.yticks([-1,-.5,0,.5,1],fontsize=15)
+    plt.savefig('./plot/basic_functions/basic_signal_6.png',dpi=300)
+    return 0
+
 def basic_function_Bspline(length):
     bf=np.zeros((3,length))
     num=[0,7,14]
@@ -251,6 +279,23 @@ def simulation(length,n_signals):
         data[tau_cp[k]:tau_cp[k+1],n_signal:2*n_signal]=np.dot(basic_function_Fourier(tau_cp[k+1]-tau_cp[k]),weight2_final)
     return data
 
+def simulation_similar(length,n_signals):
+    n_signal=int(n_signals/2)
+    data=np.zeros((length,2*n_signal))
+    tau_cp=[0,int(length/4),int(length/2),length]
+    weight1=np.random.random((3,n_signal))-0.5
+    weight2=np.random.random((3,n_signal))-0.5
+    for k in range(3):
+        weight1_new=np.random.random((3,3))-0.5
+        weight1=np.dot(weight1_new,weight1)*2
+        #weight=weight/weight.sum(axis=0)
+        data[tau_cp[k]:tau_cp[k+1],0:n_signal]=np.dot(basic_function_Bspline(tau_cp[k+1]-tau_cp[k]),weight1)
+        weight2_new=np.random.random((3,3))-0.5
+        weight2=np.dot(weight2_new,weight2)*2
+        #weight=weight/weight.sum(axis=0)
+        data[tau_cp[k]:tau_cp[k+1],n_signal:2*n_signal]=np.dot(basic_function_Fourier(tau_cp[k+1]-tau_cp[k]),weight2)
+    return data
+
 def simulation_large(length,n_signals):
     n_signal=int(n_signals/2)
     data=np.zeros((length,2*n_signal))
@@ -267,6 +312,30 @@ def simulation_large(length,n_signals):
         weight2_final=weight2_new*weight2/np.abs(weight2)*(-1)
         #weight=weight/weight.sum(axis=0)
         data[tau_cp[k]:tau_cp[k+1],n_signal:2*n_signal]=np.dot(basic_function_Fourier(tau_cp[k+1]-tau_cp[k]),weight2_final)
+    return data
+
+def simulation_graph(length,n_signals):
+    n_signal=int(n_signals/2)
+    data=np.zeros((length,2*n_signal))
+    tau_cp=[0,int(length/4),int(length/2),length]
+    for k in range(3):
+        weight=np.zeros((n_signals,n_signals))
+        weight1= np.random.rand(n_signal,n_signal)-.5
+        weight1=np.dot(weight1,weight1.T)
+        weight2= np.random.rand(n_signal,n_signal)-.5
+        weight2=np.dot(weight2,weight2.T)
+        weight[:n_signal,:n_signal]=weight1
+        weight[n_signal:,n_signal:]=weight2
+        mean=np.zeros(n_signals)
+        weight=weight
+        mean=mean*10
+        weight=np.linalg.inv(weight)
+        diag_weight=np.diag(weight)
+        diag_weight=1/np.sqrt(diag_weight)
+        diag_weight=np.diag(diag_weight)
+        weight=np.dot(diag_weight,weight)
+        weight=np.dot(weight,diag_weight)
+        data[tau_cp[k]:tau_cp[k+1],:]=np.random.multivariate_normal(mean, weight, (tau_cp[k+1]-tau_cp[k],), 'raise')
     return data
 
 
@@ -353,15 +422,20 @@ def load_data(data_path):
     return data_arr
 
 
-def determine_parameters(data_past,n_signals,cp_list,K):
+def determine_parameters(data_past,n_signals,cp_list,K,delta=5):
     num_data=np.shape(data_past)[0]
     len_data=cp_list[-1]
-    
-    lambda1=1e-8
+    cost_t_list=[]
+    lambda1_list=[]
+    lambda1=1e-5
     is_zero=0
     while is_zero==0:
-        lambda1=lambda1*2
+        lambda1=lambda1*10
+        lambda1_list.extend([lambda1])
         cost=0
+        cost1=0
+        cost2=0
+        cost_t=0
         for j in range(num_data):
             data_noise=data_past[j,:,:]
             for k in range(len(cp_list)-1):
@@ -377,6 +451,15 @@ def determine_parameters(data_past,n_signals,cp_list,K):
                     lasso.fit(data_x, data_y)
                     coef=lasso.coef_
                     cost=cost+np.linalg.norm(coef,ord=1)
+                    data_y_estimate_temp=np.dot(data_x,coef)
+                    cost1=cost1+np.sum((data_y_estimate_temp-data_y)**2)
+                    cost2=cost2+np.log(len(data_y_estimate_temp))*np.size(np.nonzero(coef),1)
+                    #cost_t+=np.sum((data_y_estimate_temp-data_y)**2)/0.05/0.05++3*np.log(len(data_y_estimate_temp))*np.size(np.nonzero(coef),1)
+                    #cost_t+=len(data_y_estimate_temp)*np.log(np.sum((data_y_estimate_temp-data_y)**2)/len(data_y_estimate_temp))\
+                            #+3*np.log(len(data_y_estimate_temp))*np.size(np.nonzero(coef),1)
+        cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+cost2
+        #cost_t_list.extend([cost_t])
+        cost_t_list.extend([cost_t])
         #print(cost)
         if cost/num_data/(len(cp_list)-1)/n_signals<1e-4:
             is_zero=1
@@ -385,55 +468,15 @@ def determine_parameters(data_past,n_signals,cp_list,K):
     lambda1_max=lambda1  
     print(lambda1_max)
 
-    lambda1_list=[lambda1_max/10*i for i in range(11)]
-    cost_t_list=[]
-    cost_BIC_list=[]
-    for index_lambda1 in range(11):
-        coef_matrix_large_t=np.zeros((n_signals,n_signals))
-        cost1=0
-        cost2=0
-        cost_t=0
-        for j in range(num_data):
-            data_noise=data_past[j,:,:]
-            for k in range(len(cp_list)-1):
-                data_noise_temp=data_noise[cp_list[k]:cp_list[k+1],:]
-                for i in range(n_signals):
-                    coef_matrix=np.zeros((n_signals+3))
-                    data_temp=data_noise_temp
-                    data_y=data_temp[:,i].copy()
-                    data_x=data_temp.copy()
-                    data_x[:,i]=0
-                    #lasso = Lasso(lambda1_list[index_lambda1]/len(data_y)/2,fit_intercept=False,max_iter=10000)
-                    lasso = Lasso(lambda1_list[index_lambda1],fit_intercept=False,max_iter=10000)
-                    lasso.fit(data_x, data_y)
-                    coef=lasso.coef_
-                    r_square=lasso.score(data_x,data_y)
-                    data_y_estimate_temp=np.dot(data_x,coef)
-                    cost1=cost1+np.sum((data_y_estimate_temp-data_y)**2)
-                    coef_matrix[0:n_signals]=coef
-                    coef_matrix[n_signals]=0
-                    coef_matrix[n_signals+1]=cost1
-                    coef_matrix[n_signals+2]=r_square
-                    coef_matrix_large_t[:,i]=coef
-                    cost2=cost2+np.size(np.nonzero(coef),1)
-
-        cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+np.log(n_signals*num_data*len_data)*cost2
-        #cost_t_list.extend([cost_t])
-        cost_t_list.extend([cost_t])
-    #print(cost_t_list)
     best_index=cost_t_list.index(min(cost_t_list))
     lambda_best=lambda1_list[best_index]
     print(lambda_best)
 
-    if best_index==0:
-        lambda1_list=[lambda1_list[best_index]+(lambda1_list[best_index+1]-lambda1_list[best_index])/10*i for i in range(11)]
-    elif best_index==10:
-        lambda1_list=[lambda1_list[best_index-1]+(lambda1_list[best_index]-lambda1_list[best_index-1])/10*i for i in range(11)]
-    else:
-        lambda1_list=[lambda1_list[best_index-1]+(lambda1_list[best_index+1]-lambda1_list[best_index-1])/10*i for i in range(11)]
+    lambda1_list=[lambda_best/10*i for i in range(11)]
+    lambda1_list.extend([lambda_best*(i+2) for i in range(9)])
 
     cost_t_list=[]
-    for index_lambda1 in range(11):
+    for index_lambda1 in range(len(lambda1_list)):
         coef_matrix_large_t=np.zeros((n_signals,n_signals))
         cost1=0
         cost2=0
@@ -460,9 +503,11 @@ def determine_parameters(data_past,n_signals,cp_list,K):
                     coef_matrix[n_signals+1]=cost1
                     coef_matrix[n_signals+2]=r_square
                     coef_matrix_large_t[:,i]=coef
-                    cost2=cost2+np.size(np.nonzero(coef),1)
-                    
-        cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+np.log(n_signals*num_data*len_data)*cost2
+                    cost2=cost2+np.log(len(data_y_estimate_temp))*np.size(np.nonzero(coef),1)
+                    #cost_t+=np.sum((data_y_estimate_temp-data_y)**2)/0.05/0.05++3*np.log(len(data_y_estimate_temp))*np.size(np.nonzero(coef),1)
+                    #cost_t+=len(data_y_estimate_temp)*np.log(np.sum((data_y_estimate_temp-data_y)**2)/len(data_y_estimate_temp))\
+                            #+3*np.log(len(data_y_estimate_temp))*np.size(np.nonzero(coef),1)
+        cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+cost2
         #cost_t_list.extend([cost_t])
         cost_t_list.extend([cost_t])
 
@@ -477,7 +522,6 @@ def determine_parameters(data_past,n_signals,cp_list,K):
         lambda1_list=[lambda1_list[best_index-1]+(lambda1_list[best_index]-lambda1_list[best_index-1])/10*i for i in range(11)]
     else:
         lambda1_list=[lambda1_list[best_index-1]+(lambda1_list[best_index+1]-lambda1_list[best_index-1])/10*i for i in range(11)]
-
     cost_t_list=[]
     for index_lambda1 in range(11):
         coef_matrix_large_t=np.zeros((n_signals,n_signals))
@@ -506,103 +550,16 @@ def determine_parameters(data_past,n_signals,cp_list,K):
                     coef_matrix[n_signals+1]=cost1
                     coef_matrix[n_signals+2]=r_square
                     coef_matrix_large_t[:,i]=coef
-                    cost2=cost2+np.size(np.nonzero(coef),1)
-                    
-        cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+np.log(n_signals*num_data*len_data)*cost2
+                    cost2=cost2+np.log(len(data_y_estimate_temp))*np.size(np.nonzero(coef),1)
+                    #cost_t+=np.sum((data_y_estimate_temp-data_y)**2)/0.05/0.05++3*np.log(len(data_y_estimate_temp))*np.size(np.nonzero(coef),1)
+                    #cost_t+=len(data_y_estimate_temp)*np.log(np.sum((data_y_estimate_temp-data_y)**2)/len(data_y_estimate_temp))\
+                            #+3*np.log(len(data_y_estimate_temp))*np.size(np.nonzero(coef),1)
+        cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+cost2
         #cost_t_list.extend([cost_t])
         cost_t_list.extend([cost_t])
 
     #print(cost_t_list)
     best_index=cost_t_list.index(min(cost_t_list))
-    lambda_best=lambda1_list[best_index]
-
-    if best_index==0:
-        lambda1_list=[lambda1_list[best_index]+(lambda1_list[best_index+1]-lambda1_list[best_index])/10*i for i in range(11)]
-    elif best_index==10:
-        lambda1_list=[lambda1_list[best_index-1]+(lambda1_list[best_index]-lambda1_list[best_index-1])/10*i for i in range(11)]
-    else:
-        lambda1_list=[lambda1_list[best_index-1]+(lambda1_list[best_index+1]-lambda1_list[best_index-1])/10*i for i in range(11)]
-    cost_t_list=[]
-    for index_lambda1 in range(11):
-        coef_matrix_large_t=np.zeros((n_signals,n_signals))
-        cost1=0
-        cost2=0
-        cost_t=0
-        for j in range(num_data):
-            data_noise=data_past[j,:,:]
-            for k in range(len(cp_list)-1):
-                data_noise_temp=data_noise[cp_list[k]:cp_list[k+1],:]
-                for i in range(n_signals):
-                    coef_matrix=np.zeros((n_signals+3))
-                    data_temp=data_noise_temp
-                    data_y=data_temp[:,i].copy()
-                    data_x=data_temp.copy()
-                    data_x[:,i]=0
-                    #lasso = Lasso(lambda1_list[index_lambda1]/len(data_y)/2,fit_intercept=False,max_iter=10000)
-                    lasso = Lasso(lambda1_list[index_lambda1],fit_intercept=False,max_iter=10000)
-                    lasso.fit(data_x, data_y)
-                    coef=lasso.coef_
-                    r_square=lasso.score(data_x,data_y)
-                    data_y_estimate_temp=np.dot(data_x,coef)
-                    cost1=cost1+np.sum((data_y_estimate_temp-data_y)**2)
-                    coef_matrix[0:n_signals]=coef
-                    coef_matrix[n_signals]=0
-                    coef_matrix[n_signals+1]=cost1
-                    coef_matrix[n_signals+2]=r_square
-                    coef_matrix_large_t[:,i]=coef
-                    cost2=cost2+np.size(np.nonzero(coef),1)
-                    
-        cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+np.log(n_signals*num_data*len_data)*cost2
-        #cost_t_list.extend([cost_t])
-        cost_t_list.extend([cost_t])
-
-    #print(cost_t_list)
-    best_index=cost_t_list.index(min(cost_t_list))
-    lambda1_best=lambda1_list[best_index]
-
-    if best_index==0:
-        lambda1_list=[lambda1_list[best_index]+(lambda1_list[best_index+1]-lambda1_list[best_index])/10*i for i in range(11)]
-    elif best_index==10:
-        lambda1_list=[lambda1_list[best_index-1]+(lambda1_list[best_index]-lambda1_list[best_index-1])/10*i for i in range(11)]
-    else:
-        lambda1_list=[lambda1_list[best_index-1]+(lambda1_list[best_index+1]-lambda1_list[best_index-1])/10*i for i in range(11)]
-    cost_t_list=[]
-    for index_lambda1 in range(11):
-        coef_matrix_large_t=np.zeros((n_signals,n_signals))
-        cost1=0
-        cost2=0
-        cost_t=0
-        for j in range(num_data):
-            data_noise=data_past[j,:,:]
-            for k in range(len(cp_list)-1):
-                data_noise_temp=data_noise[cp_list[k]:cp_list[k+1],:]
-                for i in range(n_signals):
-                    coef_matrix=np.zeros((n_signals+3))
-                    data_temp=data_noise_temp
-                    data_y=data_temp[:,i].copy()
-                    data_x=data_temp.copy()
-                    data_x[:,i]=0
-                    #lasso = Lasso(lambda1_list[index_lambda1]/len(data_y)/2,fit_intercept=False,max_iter=10000)
-                    lasso = Lasso(lambda1_list[index_lambda1],fit_intercept=False,max_iter=10000)
-                    lasso.fit(data_x, data_y)
-                    coef=lasso.coef_
-                    r_square=lasso.score(data_x,data_y)
-                    data_y_estimate_temp=np.dot(data_x,coef)
-                    cost1=cost1+np.sum((data_y_estimate_temp-data_y)**2)
-                    coef_matrix[0:n_signals]=coef
-                    coef_matrix[n_signals]=0
-                    coef_matrix[n_signals+1]=cost1
-                    coef_matrix[n_signals+2]=r_square
-                    coef_matrix_large_t[:,i]=coef
-                    cost2=cost2+np.size(np.nonzero(coef),1)
-                    
-        cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+np.log(n_signals*num_data*len_data)*cost2
-        #cost_t_list.extend([cost_t])
-        cost_t_list.extend([cost_t])
-
-    #print(cost_t_list)
-    best_index=cost_t_list.index(min(cost_t_list))
-    lambda1_best=lambda1_list[best_index]
     lambda1=lambda1_list[best_index]
     print(lambda1)
 
@@ -623,12 +580,12 @@ def determine_parameters(data_past,n_signals,cp_list,K):
         cost=0
         for j in range(num_data):
             data_noise=data_past[j,:,:]
-            cp=PELT_select_y(data_noise,lambda1,lambda2,K,select_y_list)
+            cp=PELT_select_y(data_noise,lambda1,lambda2,lambda2/1.5,select_y_list)
             cp_est=cp.tolist()
             cp_est_list.append(cp_est)
             cp_est=np.array(cp_est)
             cp_diff=cp_ture-cp_est
-            cp_diff[np.where((cp_diff>-5)&(cp_diff<5))]=0
+            cp_diff[np.where((cp_diff>-delta)&(cp_diff<delta))]=0
             cost=cost+np.size(np.nonzero(cp_diff),1)
         #if len(cost_list)>0:
         #    if cost>=cost_list[-1]:
@@ -647,75 +604,72 @@ def determine_parameters(data_past,n_signals,cp_list,K):
     lambda2_best=lambda2_list[best_index]
     cost_positive=cost_list[best_index]
     
-    if best_index!=0:
-        lambda2_list=[lambda2_best/10*i for i in range(11)]
-        lambda2_list.extend([lambda2_best*(i+2) for i in range(9)])
-        cp_est_list=[]
-        cost_list=[]
-        for index_lambda2 in range(len(lambda2_list)):
-            cost=0
-            for j in range(num_data):
-                data_noise=data_past[j,:,:]
-                cp=PELT_select_y(data_noise,lambda1,lambda2_list[index_lambda2],K,select_y_list)
-                cp_est=cp.tolist()
-                cp_est_list.append(cp_est)
-                cp_est=np.array(cp_est)
-                cp_diff=cp_ture-cp_est
-                cp_diff[np.where((cp_diff>-5)&(cp_diff<5))]=0
-                cost=cost+np.size(np.nonzero(cp_diff),1)
-            cost_list.extend([cost])
-        #print(cost_t_list)
-        best_index=cost_list.index(min(cost_list))
-        lambda2_best=lambda2_list[best_index]
-        lambda2=lambda2_best
+    lambda2_list=[lambda2_best/10*i for i in range(11)]
+    lambda2_list.extend([lambda2_best*(i+2) for i in range(9)])
+    cp_est_list=[]
+    cost_list=[]
+    for index_lambda2 in range(len(lambda2_list)):
+        cost=0
+        for j in range(num_data):
+            data_noise=data_past[j,:,:]
+            cp=PELT_select_y(data_noise,lambda1,lambda2_list[index_lambda2],lambda2_list[index_lambda2]/1.5,select_y_list)
+            cp_est=cp.tolist()
+            cp_est_list.append(cp_est)
+            cp_est=np.array(cp_est)
+            cp_diff=cp_ture-cp_est
+            cp_diff[np.where((cp_diff>-delta)&(cp_diff<delta))]=0
+            cost=cost+np.size(np.nonzero(cp_diff),1)
+        cost_list.extend([cost])
+    #print(cost_t_list)
+    best_index=np.where(np.array(cost_list)==min(cost_list))
+    lambda2_best=np.max(np.array(lambda2_list)[best_index])
+    lambda2=lambda2_best
+    if len(best_index)>1:
+        return lambda1,lambda2
     else:
-        lambda2=-1e-3
-        is_zero=0
-        lambda2_list=[]
-        cp_est_list=[]
-        cost_list=[]
-        while is_zero==0:
-            lambda2=lambda2*10
-            lambda2_list.extend([lambda2])
-            cost=0
-            for j in range(num_data):
-                data_noise=data_past[j,:,:]
-                cp=PELT_select_y(data_noise,lambda1,lambda2,K,select_y_list)
-                cp_est=cp.tolist()
-                cp_est_list.append(cp_est)
-                cp_est=np.array(cp_est)
-                cp_diff=cp_ture-cp_est
-                cp_diff[np.where((cp_diff>-5)&(cp_diff<5))]=0
-                cost=cost+np.size(np.nonzero(cp_diff),1)
-            if len(cost_list)>0:
-                if cost>=cost_list[-1]:
-                    cost_list.extend([cost])
-                    is_zero=1
-                    break   
-            cost_list.extend([cost])
-            #print(cost)
-        lambda2_min=lambda2 
-        print(lambda2_min)
-        lambda2=lambda2_min/10
-        
-        lambda2_list=[lambda2/10*i for i in range(11)]
-        lambda2_list.extend([lambda2*(i+2) for i in range(9)])
+        best_index=best_index[0][0]
+        if best_index==0:
+            lambda2_list=[lambda2_list[best_index]+(lambda2_list[best_index+1]-lambda2_list[best_index])/10*i for i in range(11)]
+        elif best_index==10:
+            lambda2_list=[lambda2_list[best_index-1]+(lambda2_list[best_index]-lambda2_list[best_index-1])/10*i for i in range(11)]
+        else:
+            lambda2_list=[lambda2_list[best_index-1]+(lambda2_list[best_index+1]-lambda2_list[best_index-1])/10*i for i in range(11)]
         cp_est_list=[]
         cost_list=[]
         for index_lambda2 in range(len(lambda2_list)):
             cost=0
             for j in range(num_data):
                 data_noise=data_past[j,:,:]
-                cp=PELT_select_y(data_noise,lambda1,lambda2_list[index_lambda2],K,select_y_list)
+                cp=PELT_select_y(data_noise,lambda1,lambda2_list[index_lambda2],lambda2_list[index_lambda2]/1.5,select_y_list)
                 cp_est=cp.tolist()
                 cp_est_list.append(cp_est)
                 cp_est=np.array(cp_est)
                 cp_diff=cp_ture-cp_est
-                cp_diff[np.where((cp_diff>-5)&(cp_diff<5))]=0
+                cp_diff[np.where((cp_diff>-delta)&(cp_diff<delta))]=0
                 cost=cost+np.size(np.nonzero(cp_diff),1)
             cost_list.extend([cost])
         #print(cost_t_list)
-        best_index=cost_list.index(min(cost_list))
-        lambda2_best=lambda2_list[best_index]
-        lambda2=lambda2_best   
-    return lambda1,lambda2
+        best_index=np.where(np.array(cost_list)<min(cost_list)+num_data*delta)
+        lambda2_best=np.mean(np.array(lambda2_list)[best_index])
+        lambda2=lambda2_best
+        return lambda1,lambda2
+'''
+sigma2=0.05
+lambda1=0.016
+lambda2=6
+n_signals=40
+K=lambda2/10
+n_length=128
+n_experiments=100
+np.random.seed(0)
+cp_list=[]
+    
+data_patch=np.zeros((n_experiments,n_length,n_signals))
+data_patch_clean=np.zeros((n_experiments,n_length,n_signals))
+np.random.seed(0)
+data=simulation(n_length,n_signals)
+data_noise=data+np.random.normal(size=(n_length,n_signals))*sigma2
+select_y_list=[i for i in range(n_signals)]
+cp=PELT_select_y(data_noise,lambda1,lambda2,K,select_y_list)
+'''
+
