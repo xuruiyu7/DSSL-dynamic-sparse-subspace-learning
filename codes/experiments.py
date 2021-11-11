@@ -32,8 +32,8 @@ if __name__ == '__main__':
     for i in range(64,128):
         data[i,:]=np.append(np.diff(data[i-1,:]),data[i-1,39])*.3+np.append(np.diff(data[i-2,:]),data[i-2,39])*-.3+np.random.normal(size=(1,40))*.05
     K=0
-    lambda1=0.01
-    lambda2=2
+    lambda1=0.0028
+    lambda2=2.2
     n_length=128
     cp=PELT_select_y(data,lambda1,lambda2,K,select_y_list)
     plt.plot(cp)
@@ -109,7 +109,7 @@ if __name__ == '__main__':
     plt.xlabel("Time",fontsize=8)
     plt.ylabel('The latest change point',fontsize=8)
     plt.legend(loc='upper left',fontsize=6)
-    plt.savefig('experiment1_LCP.png',dpi=300)
+    #plt.savefig('experiment1_LCP.png',dpi=300)
 #%%    
     #plot profiles and estimated coefs
     #lambda1=0.0028
@@ -140,15 +140,16 @@ if __name__ == '__main__':
             coef_matrix[n_signals+1,j]=cost
             coef_matrix[n_signals+2,j]=r_square
             coef_matrix_large_t[j,:,i]=coef_matrix[0:n_signals,j]
-        fig = plt.figure(figsize=(3,2))
+        fig = plt.figure(figsize=(4,4))
         ax = fig.add_axes([0.15, 0.15, 0.75, 0.7]) 
         #plt.plot(np.arange(1,129,1),data[:,i],label='original',color='k')
         plt.plot(np.arange(1,129,1),data_noise[:,i],label='original',color='k')
         plt.plot(np.arange(1,129,1),data_y_estimate,label='fit',color='r',linestyle ='--')
-        plt.title("Time series "+str(i+1),fontsize=20)
-        plt.xticks([0,32,64,96,128],fontsize=20)
-        plt.yticks(fontsize=20)
-        plt.savefig('./plot/est_functions/Function_'+str(i+1)+'.png',dpi=300)
+        plt.title("Time series "+str(i+1),fontsize=15)
+        plt.xticks([0,32,64,96,128],fontsize=15)
+        plt.yticks(fontsize=15)
+        plt.ylim([-1.5,1.5])
+        #plt.savefig('./plot/est_functions/Function_'+str(i+1)+'.png',dpi=300,bbox_inches='tight')
         coef_matrix_large=np.zeros((12,n_signals))
         coef_matrix_large[0:3,:]=np.transpose(coef_matrix[0:n_signals,0])
         coef_matrix_large[3:6,:]=np.transpose(coef_matrix[0:n_signals,1])
@@ -163,7 +164,7 @@ if __name__ == '__main__':
         plt.yticks([])
         plt.xlabel("Time",fontsize=10)
         #plt.show()
-        plt.savefig('./plot/est_coef/coef_'+str(i+1)+'.png',dpi=300,bbox_inches='tight')
+        #plt.savefig('./plot/est_coef/coef_'+str(i+1)+'.png',dpi=300,bbox_inches='tight')
 #%%    
     ###metrics
     cp_true=[32,64]

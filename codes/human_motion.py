@@ -11,9 +11,9 @@ import scipy.io as sio
 if __name__ == "__main__":    
     __spec__ = "ModuleSpec(name='builtins', loader=<class '_frozen_importlib.BuiltinImporter'>)"
     ###load data
-    data_path_bow=r'../MicrosoftGestureDataset-RC/data/P1_2_7_p16.csv'
-    data_path_shoot=r'../MicrosoftGestureDataset-RC/data/P1_2_6_p16.csv'
-    data_path_throw=r'../MicrosoftGestureDataset-RC/data/P1_2_8_p16.csv'
+    data_path_bow=r'../GestureDataset/P1_2_7_p16.csv'
+    data_path_shoot=r'../GestureDataset/P1_2_6_p16.csv'
+    data_path_throw=r'../GestureDataset/P1_2_8_p16.csv'
     data_bow=load_data(data_path_bow)
     data_shoot=load_data(data_path_shoot)
     data_throw=load_data(data_path_throw)

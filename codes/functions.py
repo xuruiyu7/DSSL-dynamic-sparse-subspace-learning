@@ -314,29 +314,57 @@ def simulation_large(length,n_signals):
         data[tau_cp[k]:tau_cp[k+1],n_signal:2*n_signal]=np.dot(basic_function_Fourier(tau_cp[k+1]-tau_cp[k]),weight2_final)
     return data
 
+def gen_correlation_matrix(n_signal,eta):
+    d = n_signal
+    beta = eta + (d-1)/2   
+    P = np.zeros((d,d))
+    S = np.eye(d)
+
+    for k in range(1,d):
+        beta = beta - 1/2;
+        for i in range(k+1,d+1):
+            P[k-1,i-1] = np.random.beta(beta,beta)
+            P[k-1,i-1] = (P[k-1,i-1]-0.5)*2
+            p = P[k-1,i-1]
+            for l in range(k-1,0,-1):
+                p = p * np.sqrt((1-P[l-1,i-1]**2)*(1-P[l-1,k-1]**2)) + P[l-1,i-1]*P[l-1,k-1]
+            S[k-1,i-1] = p
+            S[i-1,k-1] = p
+    return S
+    
+def gen_correlation_matrix2(n_signal,betaparam):
+    d = n_signal
+    P = np.zeros((d,d))
+    S = np.eye(d)
+
+    for k in range(1,d):
+        for i in range(k+1,d+1):
+            P[k-1,i-1] = np.random.beta(betaparam,betaparam)
+            P[k-1,i-1] = (P[k-1,i-1]-0.5)*2
+            p = P[k-1,i-1]
+            for l in range(k-1,0,-1):
+                p = p * np.sqrt((1-P[l-1,i-1]**2)*(1-P[l-1,k-1]**2)) + P[l-1,i-1]*P[l-1,k-1]
+            S[k-1,i-1] = p
+            S[i-1,k-1] = p
+    return S
+    
+
 def simulation_graph(length,n_signals):
     n_signal=int(n_signals/2)
     data=np.zeros((length,2*n_signal))
     tau_cp=[0,int(length/4),int(length/2),length]
     for k in range(3):
-        weight=np.zeros((n_signals,n_signals))
-        weight1= np.random.rand(n_signal,n_signal)-.5
-        weight1=np.dot(weight1,weight1.T)
-        weight2= np.random.rand(n_signal,n_signal)-.5
-        weight2=np.dot(weight2,weight2.T)
+        weight=np.zeros((n_signals,n_signals))        
+        eta=0.5
+        weight1=gen_correlation_matrix2(n_signal,eta)
+        weight2=gen_correlation_matrix2(n_signal,eta)
         weight[:n_signal,:n_signal]=weight1
         weight[n_signal:,n_signal:]=weight2
         mean=np.zeros(n_signals)
-        weight=weight
-        mean=mean*10
-        weight=np.linalg.inv(weight)
-        diag_weight=np.diag(weight)
-        diag_weight=1/np.sqrt(diag_weight)
-        diag_weight=np.diag(diag_weight)
-        weight=np.dot(diag_weight,weight)
-        weight=np.dot(weight,diag_weight)
-        data[tau_cp[k]:tau_cp[k+1],:]=np.random.multivariate_normal(mean, weight, (tau_cp[k+1]-tau_cp[k],), 'raise')
+
+        data[tau_cp[k]:tau_cp[k+1],:]=np.random.multivariate_normal(mean, weight, (tau_cp[k+1]-tau_cp[k],), 'raise')*10
     return data
+
 
 
 
@@ -458,6 +486,7 @@ def determine_parameters(data_past,n_signals,cp_list,K,delta=5):
                     #cost_t+=len(data_y_estimate_temp)*np.log(np.sum((data_y_estimate_temp-data_y)**2)/len(data_y_estimate_temp))\
                             #+3*np.log(len(data_y_estimate_temp))*np.size(np.nonzero(coef),1)
         cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+cost2
+        print(lambda1,np.log(cost1/n_signals/num_data/len_data),cost2,cost_t)
         #cost_t_list.extend([cost_t])
         cost_t_list.extend([cost_t])
         #print(cost)
@@ -510,6 +539,8 @@ def determine_parameters(data_past,n_signals,cp_list,K,delta=5):
         cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+cost2
         #cost_t_list.extend([cost_t])
         cost_t_list.extend([cost_t])
+        print(lambda1_list[index_lambda1],np.log(cost1/n_signals/num_data/len_data),cost2,cost_t)
+
 
     #print(cost_t_list)
     best_index=cost_t_list.index(min(cost_t_list))
@@ -518,7 +549,7 @@ def determine_parameters(data_past,n_signals,cp_list,K,delta=5):
 
     if best_index==0:
         lambda1_list=[lambda1_list[best_index]+(lambda1_list[best_index+1]-lambda1_list[best_index])/10*i for i in range(11)]
-    elif best_index==10:
+    elif best_index==len(lambda1_list)-1:
         lambda1_list=[lambda1_list[best_index-1]+(lambda1_list[best_index]-lambda1_list[best_index-1])/10*i for i in range(11)]
     else:
         lambda1_list=[lambda1_list[best_index-1]+(lambda1_list[best_index+1]-lambda1_list[best_index-1])/10*i for i in range(11)]
@@ -557,6 +588,8 @@ def determine_parameters(data_past,n_signals,cp_list,K,delta=5):
         cost_t=n_signals*num_data*len_data*np.log(cost1/n_signals/num_data/len_data)+cost2
         #cost_t_list.extend([cost_t])
         cost_t_list.extend([cost_t])
+        print(lambda1_list[index_lambda1],np.log(cost1/n_signals/num_data/len_data),cost2,cost_t)
+
 
     #print(cost_t_list)
     best_index=cost_t_list.index(min(cost_t_list))
@@ -630,7 +663,7 @@ def determine_parameters(data_past,n_signals,cp_list,K,delta=5):
         best_index=best_index[0][0]
         if best_index==0:
             lambda2_list=[lambda2_list[best_index]+(lambda2_list[best_index+1]-lambda2_list[best_index])/10*i for i in range(11)]
-        elif best_index==10:
+        elif best_index==len(lambda2_list)-1:
             lambda2_list=[lambda2_list[best_index-1]+(lambda2_list[best_index]-lambda2_list[best_index-1])/10*i for i in range(11)]
         else:
             lambda2_list=[lambda2_list[best_index-1]+(lambda2_list[best_index+1]-lambda2_list[best_index-1])/10*i for i in range(11)]
