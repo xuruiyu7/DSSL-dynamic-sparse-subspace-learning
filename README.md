@@ -30,8 +30,17 @@ Two subspaces are simulated, where the first half of these time series are gener
 
 Figure 2 shows the mean and confidence interval of the detected LCP (latest change-point) at each time step. It can be clearly seen that in most of the cases, the change can be timely detected with only about 10 time steps after the change occurs. Besides, as the observations since the latest change accumulates, the detected location of the LCP becomes more and more accurate.
 
-Figure 2. The online detected latest change-point.
+![image](https://github.com/xuruiyu7/DSSL-dynamic-sparse-subspace-learning/blob/main/fig/experiment1_LCP.png)
+<p align="center">Figure 2. The online detected latest change-point.</p>
+
 
 Figure 3 shows the estimated coefficients at the final time step for the first three time series of each subspace for illustration. These coefficients change at two change-points. Only the time series within the same subspace have nonzero coefficients, and each representation is sparse. These coefficients are constant within each segment.
 
-Figure 3. The estimated coefficients for the first three time series of each subspace as response variables: (a) subspace I and (b) subspace II.
+![image](https://github.com/xuruiyu7/DSSL-dynamic-sparse-subspace-learning/blob/main/fig/coef.png)
+<p align="center">Figure 3. The estimated coefficients for the first three time series of each subspace as response variables: (a) subspace I and (b) subspace II.</p>
+
+## Future Work
++ Variance heterogeneity or auto-correlation;
++ Nonlinear regressions such as kernel based methods;
++ Improve the formulation of the SSC optimization;
++ Graph models.
